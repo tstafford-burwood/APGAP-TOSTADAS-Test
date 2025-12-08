@@ -1,0 +1,14 @@
+{
+    "test_field_1": {
+        "replace_empty_with": "not populated",
+        "new_field_name": "new_field_name"
+    },
+    "test_field_2": {
+        "replace_empty_with": "",
+        "new_field_name": "new_field_name2"
+    },
+    "test_field_3": {
+        "replace_empty_with": "",
+        "new_field_name": ""
+    }
+}
