@@ -1,6 +1,6 @@
 ---
-NCBI_username:
-NCBI_password:
+NCBI_username: 'tstafford@burwood.com'
+NCBI_password: 'Slamdiego25!'
 NCBI_ftp_host: 'ftp-private.ncbi.nlm.nih.gov'
 NCBI_sftp_host: 'sftp-private.ncbi.nlm.nih.gov'
 NCBI_API_URL: 'https://submit.ncbi.nlm.nih.gov/api/2.0/files/FILE_ID/?format=attachment'
