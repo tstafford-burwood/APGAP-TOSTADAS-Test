@@ -17,7 +17,16 @@ workflow SUBMISSION {
     main:
         submission_config_file = file(submission_config)
 
-        PREP_SUBMISSION(submission_ch, submission_config_file)
+        // Extract batch_tsv from meta and pass as separate input
+        prep_submission_ch = submission_ch.map { meta, samples, enabledDatabases ->
+            tuple(meta, samples, enabledDatabases)
+        }
+
+        batch_tsv_ch = submission_ch.map { meta, samples, enabledDatabases ->
+            file(meta.batch_tsv)
+        }
+
+        PREP_SUBMISSION(prep_submission_ch, batch_tsv_ch, submission_config_file)
 
         PREP_SUBMISSION.out.submission_files
             .set { submission_batch_folder }

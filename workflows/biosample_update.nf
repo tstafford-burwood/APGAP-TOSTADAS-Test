@@ -74,7 +74,7 @@ workflow BIOSAMPLE_UPDATE {
         .map { tsv_file, json_file ->
             def parsed = new groovy.json.JsonSlurper().parseText(json_file.text)
             parsed.meta.batch_tsv = tsv_file.toString()  // path is guaranteed to exist
-            tuple(parsed.meta, parsed.samples, parsed.enabled)
+            tuple(parsed.meta, parsed.samples, parsed.enabled, tsv_file)
         }
 
     if (params.dry_run) {
@@ -85,8 +85,18 @@ workflow BIOSAMPLE_UPDATE {
 
 
     // Step 5: run update-submission on each rebatch
+    // Extract components for UPDATE_SUBMISSION
+    update_submission_ch = rebatch_ch.map { meta, samples, enabled, tsv_file ->
+        tuple(meta, samples, enabled)
+    }
+
+    batch_tsv_ch = rebatch_ch.map { meta, samples, enabled, tsv_file ->
+        tsv_file
+    }
+
     UPDATE_SUBMISSION(
-        rebatch_ch,
+        update_submission_ch,
+        batch_tsv_ch,
         orig_submission_dir_ch,
         params.submission_config
     )
