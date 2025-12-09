@@ -26,9 +26,6 @@ nextflow_process {
                 """
                 // define inputs of the process here
                 input[0] = file("${projectDir}/assets/sample_metadata/mpxv_test_metadata.xlsx")
-                input[1] = file("${projectDir}/conf/submission_config.yaml")
-                input[2] = file("${projectDir}/assets/custom_meta_fields/example_custom_fields.json")
-                input[3] = file("${projectDir}/assets/biosample_fields_key.yaml")
                 """
             }
         }

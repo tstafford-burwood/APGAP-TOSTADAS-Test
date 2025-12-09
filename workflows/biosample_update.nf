@@ -31,12 +31,7 @@ workflow BIOSAMPLE_UPDATE {
 	log.info paramsSummaryLog(workflow)
 
 	// Run metadata validation process
-	METADATA_VALIDATION (
-		file(params.meta_path),
-		file(params.submission_config),
-		file(params.custom_fields_file),
-		file(params.biosample_fields_key)
-	)
+	METADATA_VALIDATION ( file(params.meta_path) )
 
 	// Enforce error checking before anything else continues
     CHECK_VALIDATION_ERRORS(METADATA_VALIDATION.out.errors)
