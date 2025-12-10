@@ -51,8 +51,8 @@ workflow BIOSAMPLE_AND_SRA {
 		}
 	}
 
-	// Create metadata_batch_ch and split it for multiple uses
-	METADATA_VALIDATION.out.tsv_files
+	// Create metadata_batch_ch from validation output
+	metadata_batch_ch = METADATA_VALIDATION.out.tsv_files
 		.flatten()
 		.map { batch_tsv ->
 			def meta = [
@@ -62,12 +62,21 @@ workflow BIOSAMPLE_AND_SRA {
 			log.info "Created metadata_batch_ch entry: batch_id=${meta.batch_id}, file=${batch_tsv}"
 			[meta, batch_tsv]
 		}
-		.into { metadata_batch_ch; metadata_batch_ch_for_join }
 		
 	// Log metadata_batch_ch contents
 	metadata_batch_ch
 		.ifEmpty {
 			log.error "ERROR: metadata_batch_ch is empty. No TSV files were created by METADATA_VALIDATION."
+		}
+		
+	// Create a separate channel for the join (recreated from source to avoid consumption issues)
+	metadata_batch_ch_for_join = METADATA_VALIDATION.out.tsv_files
+		.flatten()
+		.map { batch_tsv ->
+			def meta = [
+				batch_id: batch_tsv.getBaseName()
+			]
+			[meta, batch_tsv]
 		}
 
 	// Aggregate the tsvs for concatenation
