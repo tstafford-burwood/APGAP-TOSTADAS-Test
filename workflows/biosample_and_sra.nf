@@ -76,7 +76,14 @@ workflow BIOSAMPLE_AND_SRA {
 			def meta = [
 				batch_id: batch_tsv.getBaseName()
 			]
+			log.info "Created metadata_batch_ch_for_join entry: batch_id=${meta.batch_id}, file=${batch_tsv}"
 			[meta, batch_tsv]
+		}
+		
+	// Log metadata_batch_ch_for_join contents
+	metadata_batch_ch_for_join
+		.ifEmpty {
+			log.error "ERROR: metadata_batch_ch_for_join is empty. Cannot perform join operation."
 		}
 
 	// Aggregate the tsvs for concatenation
@@ -176,23 +183,28 @@ workflow BIOSAMPLE_AND_SRA {
 
 				return tuple(meta, sample_maps, enabledDatabases as List)
 			}
-			// Log before join and pass through (don't consume the channel)
+			// Log before join and prepare for join (batch_id must be first element for join to work)
 			.map { meta, sample_maps, enabledDatabases ->
 				log.info "Before join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
-				tuple(meta, sample_maps, enabledDatabases)
+				// Put batch_id as first element for join to match on
+				[meta.batch_id, meta, sample_maps, enabledDatabases]
 			}
 			// Join with metadata_batch_ch_for_join to get the batch_tsv file
 			.join(metadata_batch_ch_for_join.map { meta, batch_tsv -> 
 				log.info "Join key: batch_id=${meta.batch_id}, batch_tsv=${batch_tsv}"
 				[meta.batch_id, batch_tsv] 
 			})
-			.map { meta, sample_maps, enabledDatabases, batch_tsv ->
-				log.info "After join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}, batch_tsv=${batch_tsv}"
+			.map { batch_id, meta, sample_maps, enabledDatabases, batch_tsv ->
+				log.info "After join - Batch ${batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}, batch_tsv=${batch_tsv}"
 				// Log warning if enabledDatabases is empty
 				if (enabledDatabases.isEmpty()) {
-					log.warn "WARNING: No databases enabled for batch ${meta.batch_id}. Submission will be skipped. Check that params.biosample or params.sra are set, and that sample files exist."
+					log.warn "WARNING: No databases enabled for batch ${batch_id}. Submission will be skipped. Check that params.biosample or params.sra are set, and that sample files exist."
 				}
-				tuple(meta, sample_maps, enabledDatabases, batch_tsv)
+				// Reconstruct meta with batch_id
+				def final_meta = [
+					batch_id: batch_id
+				]
+				tuple(final_meta, sample_maps, enabledDatabases, batch_tsv)
 			}
 
 		// Log if submission_batch_ch is empty
