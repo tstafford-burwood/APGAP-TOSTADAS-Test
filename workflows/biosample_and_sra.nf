@@ -117,8 +117,10 @@ workflow BIOSAMPLE_AND_SRA {
 				log.error "  3. All 'sample_name' values in the TSV files are empty/null"
 				log.error "Check the batched_tsvs/*.tsv files in the validation output directory."
 			}
-			.view { meta, fq1, fq2, nnp -> 
-				"Sample found: ${meta.sample_id} in batch ${meta.batch_id}"
+			// Log samples found without consuming the channel
+			.map { meta, fq1, fq2, nnp ->
+				log.info "Sample found: ${meta.sample_id} in batch ${meta.batch_id}"
+				tuple(meta, fq1, fq2, nnp)
 			}
 
 		// Check for valid submission inputs and make batch channel
@@ -163,9 +165,10 @@ workflow BIOSAMPLE_AND_SRA {
 
 				return tuple(meta, sample_maps, enabledDatabases as List)
 			}
-			// Log before join to see what we have
-			.view { meta, sample_maps, enabledDatabases ->
-				"Before join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
+			// Log before join and pass through (don't consume the channel)
+			.map { meta, sample_maps, enabledDatabases ->
+				log.info "Before join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
+				tuple(meta, sample_maps, enabledDatabases)
 			}
 			// Join with metadata_batch_ch to get the batch_tsv file
 			.join(metadata_batch_ch.map { meta, batch_tsv -> 
