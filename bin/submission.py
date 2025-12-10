@@ -43,7 +43,15 @@ def main_submit():
 	args = get_args().parse_args()
 	params = vars(args)
 	
-	setup_logging(log_file=f'{params["submission_folder"]}/submission.log', level=logging.DEBUG)
+	# Ensure log file is created early, even if script fails
+	log_file_path = f'{params["submission_folder"]}/submission.log'
+	# Ensure the submission folder exists
+	os.makedirs(params["submission_folder"], exist_ok=True)
+	# Create empty log file if it doesn't exist
+	if not os.path.exists(log_file_path):
+		open(log_file_path, 'a').close()
+	
+	setup_logging(log_file=log_file_path, level=logging.DEBUG)
 
 	# load parameters and credentials
 	config = SubmissionConfigParser(params).load_config()
@@ -141,4 +149,10 @@ def main_submit():
 			print(f"[SKIP] {dirpath} does not contain both submission.xml and submit.ready")
 
 if __name__=="__main__":
-	main_submit()
+	try:
+		main_submit()
+	except Exception as e:
+		# Log error if logging is already set up
+		if logging.getLogger().handlers:
+			logging.error(f"Fatal error in submission.py: {str(e)}", exc_info=True)
+		raise
