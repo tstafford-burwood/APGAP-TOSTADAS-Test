@@ -38,7 +38,12 @@ def main_prepare():
 
 	os.makedirs(params['outdir'], exist_ok=True)
 
+	# Ensure log file is created early, even if script fails
 	log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
+	# Create empty log file if it doesn't exist
+	if not os.path.exists(log_file_path):
+		open(log_file_path, 'a').close()
+	
 	setup_logging(log_file=log_file_path, level=logging.DEBUG)
 	logging.info("Started logging for preparation.")
 	
@@ -145,4 +150,10 @@ def main_prepare():
 			gb.genbank_submission_driver()
 
 if __name__=="__main__":
-	main_prepare()
+	try:
+		main_prepare()
+	except Exception as e:
+		# Log error if logging is already set up
+		if logging.getLogger().handlers:
+			logging.error(f"Fatal error in submission_prep.py: {str(e)}", exc_info=True)
+		raise
