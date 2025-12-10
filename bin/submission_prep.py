@@ -14,6 +14,9 @@ from submission_helper import (
 	setup_logging
 )
 
+# Module-level variable to store log file path for exception handling
+_log_file_path = None
+
 def prepare_sra_fastqs(samples, outdir, copy=False):
 	for sample in samples:
 		if sample.fastq1 and sample.fastq2:
@@ -33,6 +36,7 @@ def prepare_sra_fastqs(samples, outdir, copy=False):
 					os.symlink(sample.fastq2, dest_fq2)
 
 def main_prepare():
+	global _log_file_path
 	# parse exactly the same CLI args you already have
 	params = GetParams().parameters
 
@@ -41,9 +45,11 @@ def main_prepare():
 	# Ensure log file is created early, even if script fails
 	# Use relative path (from outdir) as Nextflow expects files relative to work directory
 	log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
-	# Create empty log file if it doesn't exist and ensure it's written to disk
-	with open(log_file_path, 'a') as f:
-		f.write('')  # Write empty string to ensure file is created
+	_log_file_path = log_file_path  # Store for exception handler
+	
+	# Create and write to log file directly to ensure it exists
+	with open(log_file_path, 'w') as f:
+		f.write('[INFO] Log file initialized\n')
 		f.flush()
 		os.fsync(f.fileno())  # Force write to disk
 	
@@ -53,16 +59,6 @@ def main_prepare():
 	for handler in logging.getLogger().handlers:
 		if isinstance(handler, logging.FileHandler):
 			handler.flush()
-	# Verify the log file exists and is accessible
-	if not os.path.exists(log_file_path):
-		# If FileHandler didn't create it, create it manually
-		with open(log_file_path, 'a') as f:
-			f.write('[INFO] Log file created manually\n')
-			f.flush()
-			os.fsync(f.fileno())
-	else:
-		# Touch the file to ensure it's on disk
-		os.utime(log_file_path, None)
 	
 	# load config & metadata
 	config = SubmissionConfigParser(params).load_config()
@@ -167,41 +163,90 @@ def main_prepare():
 			gb.genbank_submission_driver()
 	
 	# Ensure log file exists and is flushed before script exits
-	# Use the same path as at the start
-	final_log_path = os.path.join(params['outdir'], 'prep_submission.log')
 	# Flush all handlers but don't close them (closing might cause issues)
 	for handler in logging.getLogger().handlers:
 		if isinstance(handler, logging.FileHandler):
 			handler.flush()
-	# Final verification and write to ensure file exists on disk
-	with open(final_log_path, 'a') as f:
+	
+	# CRITICAL: Write directly to file to ensure it exists on disk
+	# This is the last thing we do before returning
+	# Use the exact relative path that Nextflow expects
+	with open(log_file_path, 'a') as f:
 		f.write('[INFO] Script completed successfully\n')
 		f.flush()
-		os.fsync(f.fileno())
+		os.fsync(f.fileno())  # Force write to disk
+	
+	# Final verification - ensure file exists at the expected path
+	if not os.path.exists(log_file_path):
+		# Last resort: create the file
+		with open(log_file_path, 'w') as f:
+			f.write('[INFO] Log file created at end of script\n')
+			f.write('[INFO] Script completed successfully\n')
+			f.flush()
+			os.fsync(f.fileno())
+	
+	# Verify file is readable and has content
+	try:
+		with open(log_file_path, 'r') as f:
+			content = f.read()
+			if not content.strip():
+				# File exists but is empty, write something
+				with open(log_file_path, 'a') as f2:
+					f2.write('[INFO] Log file verified at end\n')
+					f2.flush()
+					os.fsync(f2.fileno())
+	except Exception as e:
+		# If we can't read it, recreate it
+		with open(log_file_path, 'w') as f:
+			f.write(f'[INFO] Log file recreated (read error: {str(e)})\n')
+			f.write('[INFO] Script completed successfully\n')
+			f.flush()
+			os.fsync(f.fileno())
 
 if __name__=="__main__":
 	try:
 		main_prepare()
-		# Ensure all log handlers are flushed before exit
+		# Final flush of all handlers
 		for handler in logging.getLogger().handlers:
 			if isinstance(handler, logging.FileHandler):
 				handler.flush()
-				handler.close()
+		# Final write to ensure file exists
+		if _log_file_path and os.path.exists(_log_file_path):
+			with open(_log_file_path, 'a') as f:
+				f.write('[INFO] Script exiting normally\n')
+				f.flush()
+				os.fsync(f.fileno())
 	except Exception as e:
 		# Log error if logging is already set up
 		if logging.getLogger().handlers:
 			logging.error(f"Fatal error in submission_prep.py: {str(e)}", exc_info=True)
-			# Flush handlers even on error (don't close)
+			# Flush handlers even on error
 			for handler in logging.getLogger().handlers:
 				if isinstance(handler, logging.FileHandler):
 					handler.flush()
-			# Ensure log file exists even on error
+		
+		# CRITICAL: Ensure log file exists even on error
+		# Use module-level variable to avoid scope issues
+		if _log_file_path:
 			try:
-				log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
-				with open(log_file_path, 'a') as f:
+				with open(_log_file_path, 'a') as f:
 					f.write(f'[ERROR] Script failed: {str(e)}\n')
 					f.flush()
 					os.fsync(f.fileno())
-			except:
-				pass  # If we can't write the error, at least try to create the file
+			except Exception as write_error:
+				# If we can't write to the expected location, try to create it
+				try:
+					# Try to get outdir from GetParams if available
+					try:
+						params = GetParams().parameters
+						log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
+						with open(log_file_path, 'w') as f:
+							f.write(f'[ERROR] Script failed: {str(e)}\n')
+							f.write(f'[ERROR] Original write error: {str(write_error)}\n')
+							f.flush()
+							os.fsync(f.fileno())
+					except:
+						pass
+				except:
+					pass  # Last resort - if we can't create the file, at least don't crash
 		raise
