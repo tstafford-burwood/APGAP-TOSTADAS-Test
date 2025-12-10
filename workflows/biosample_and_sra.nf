@@ -72,8 +72,14 @@ workflow BIOSAMPLE_AND_SRA {
 		// Generate the (per-sample) fasta and fastq paths
 		sample_ch = metadata_batch_ch.flatMap { meta, batch_tsv_file -> 
 			def rows = batch_tsv_file.splitCsv(header: true, sep: '\t')
+			if (rows.isEmpty()) {
+				log.warn "WARNING: Batch ${meta.batch_id} TSV file is empty or has no data rows"
+			}
 			return rows.collect { row -> 
 				def sample_id = row.sample_name?.trim()
+				if (!sample_id) {
+					log.warn "WARNING: Found row with empty sample_name in batch ${meta.batch_id}"
+				}
 				def fq1   = row.containsKey('int_illumina_sra_file_path_1') ? trimFile(row.int_illumina_sra_file_path_1) : null
 				def fq2   = row.containsKey('int_illumina_sra_file_path_2') ? trimFile(row.int_illumina_sra_file_path_2) : null
 				def nnp   = row.containsKey('int_nanopore_sra_file_path_1') ? trimFile(row.int_nanopore_sra_file_path_1) : null
@@ -85,6 +91,12 @@ workflow BIOSAMPLE_AND_SRA {
 				return [sample_meta, fq1, fq2, nnp]
 			}
 		}
+		
+		// Log if sample_ch is empty
+		sample_ch
+			.ifEmpty {
+				log.warn "WARNING: sample_ch is empty. No samples found in metadata TSV files. Check that metadata files contain sample_name column with data."
+			}
 
 		// Check for valid submission inputs and make batch channel
 		submission_batch_ch = sample_ch
@@ -99,9 +111,10 @@ workflow BIOSAMPLE_AND_SRA {
 
 				sample_maps.each { sample ->
 					def sid = sample.meta.sample_id
-					def fq1Exists = sample.fq1 && file(sample.fq1).exists()
-					def fq2Exists = sample.fq2 && file(sample.fq2).exists()
-					def nnpExists = sample.nanopore && file(sample.nanopore).exists()
+					// Check if file exists - handle both local and GS paths
+					def fq1Exists = sample.fq1 && (sample.fq1.toString().startsWith('gs://') || file(sample.fq1).exists())
+					def fq2Exists = sample.fq2 && (sample.fq2.toString().startsWith('gs://') || file(sample.fq2).exists())
+					def nnpExists = sample.nanopore && (sample.nanopore.toString().startsWith('gs://') || file(sample.nanopore).exists())
 
 					def hasIllumina = fq1Exists && fq2Exists
 					def hasNanopore = nnpExists
@@ -128,9 +141,26 @@ workflow BIOSAMPLE_AND_SRA {
 				return tuple(meta, sample_maps, enabledDatabases as List)
 			}
 			// Join with metadata_batch_ch to get the batch_tsv file
-			.join(metadata_batch_ch.map { meta, batch_tsv -> [meta.batch_id, batch_tsv] })
+			.join(metadata_batch_ch.map { meta, batch_tsv -> 
+				[meta.batch_id, batch_tsv] 
+			})
 			.map { meta, sample_maps, enabledDatabases, batch_tsv ->
+				log.info "Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
+				// Log warning if enabledDatabases is empty
+				if (enabledDatabases.isEmpty()) {
+					log.warn "WARNING: No databases enabled for batch ${meta.batch_id}. Submission will be skipped. Check that params.biosample or params.sra are set, and that sample files exist."
+				}
 				tuple(meta, sample_maps, enabledDatabases, batch_tsv)
+			}
+
+		// Log if submission_batch_ch is empty
+		submission_batch_ch
+			.ifEmpty { 
+				log.error "ERROR: submission_batch_ch is empty. No batches to submit. This will cause PREP_SUBMISSION and SUBMIT_SUBMISSION to be skipped."
+				log.error "Possible causes:"
+				log.error "  1. sample_ch is empty (no samples in TSV files)"
+				log.error "  2. Join failed (batch_ids don't match between channels)"
+				log.error "  3. enabledDatabases is empty for all batches"
 			}
 
 		SUBMISSION(
