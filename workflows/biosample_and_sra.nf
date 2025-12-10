@@ -51,7 +51,8 @@ workflow BIOSAMPLE_AND_SRA {
 		}
 	}
 
-	metadata_batch_ch = METADATA_VALIDATION.out.tsv_files
+	// Create metadata_batch_ch and split it for multiple uses
+	METADATA_VALIDATION.out.tsv_files
 		.flatten()
 		.map { batch_tsv ->
 			def meta = [
@@ -61,6 +62,7 @@ workflow BIOSAMPLE_AND_SRA {
 			log.info "Created metadata_batch_ch entry: batch_id=${meta.batch_id}, file=${batch_tsv}"
 			[meta, batch_tsv]
 		}
+		.into { metadata_batch_ch; metadata_batch_ch_for_join }
 		
 	// Log metadata_batch_ch contents
 	metadata_batch_ch
@@ -170,8 +172,8 @@ workflow BIOSAMPLE_AND_SRA {
 				log.info "Before join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
 				tuple(meta, sample_maps, enabledDatabases)
 			}
-			// Join with metadata_batch_ch to get the batch_tsv file
-			.join(metadata_batch_ch.map { meta, batch_tsv -> 
+			// Join with metadata_batch_ch_for_join to get the batch_tsv file
+			.join(metadata_batch_ch_for_join.map { meta, batch_tsv -> 
 				log.info "Join key: batch_id=${meta.batch_id}, batch_tsv=${batch_tsv}"
 				[meta.batch_id, batch_tsv] 
 			})
