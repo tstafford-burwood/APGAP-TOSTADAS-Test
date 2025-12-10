@@ -48,8 +48,7 @@ workflow GENBANK {
         .flatten()
             .map { batch_tsv ->
                 def meta = [
-                    batch_id: batch_tsv.getBaseName(),
-                    batch_tsv: batch_tsv
+                    batch_id: batch_tsv.getBaseName()
                 ]
                 [meta, batch_tsv]
             }
@@ -57,8 +56,8 @@ workflow GENBANK {
     // Todo: We need to run GENBANK_VALIDATION per sample not per batch
 
     // Flatten metadata into per-sample tuples
-    sample_ch = metadata_batch_ch.flatMap { meta, _batch_tsv ->
-        def rows = meta.batch_tsv.splitCsv(header: true, sep: '\t')
+    sample_ch = metadata_batch_ch.flatMap { meta, batch_tsv_file ->
+        def rows = batch_tsv_file.splitCsv(header: true, sep: '\t')
         return rows.collect { row ->
             def sample_id = row.sample_name?.trim()
             def fasta = row.containsKey('fasta_path') ? trimFile(row.fasta_path) : null
@@ -66,7 +65,6 @@ workflow GENBANK {
 
             def sample_meta = [
                 batch_id : meta.batch_id,
-                batch_tsv: meta.batch_tsv,
                 sample_id: sample_id
             ]
             return [sample_meta, fasta, gff]
@@ -128,11 +126,15 @@ workflow GENBANK {
                 !s.fasta || !file(s.fasta).exists()
             }
             def meta = [
-                batch_id : batch_id,
-                batch_tsv: samples[0].meta.batch_tsv
+                batch_id : batch_id
             ]
             def enabledDatabases = missingFasta ? [] : ['genbank'] 
             return tuple(meta, samples, enabledDatabases)
+        }
+        // Join with metadata_batch_ch to get the batch_tsv file
+        .join(metadata_batch_ch.map { meta, batch_tsv -> [meta.batch_id, batch_tsv] })
+        .map { meta, samples, enabledDatabases, batch_tsv ->
+            tuple(meta, samples, enabledDatabases, batch_tsv)
         }
 
 	// Run submission using the batch channel

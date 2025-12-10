@@ -70,8 +70,8 @@ workflow BIOSAMPLE_AND_SRA {
 		
 	if (params.submission) { 
 		// Generate the (per-sample) fasta and fastq paths
-		sample_ch = metadata_batch_ch.flatMap { meta, _files -> 
-			def rows = meta.batch_tsv.splitCsv(header: true, sep: '\t')
+		sample_ch = metadata_batch_ch.flatMap { meta, batch_tsv_file -> 
+			def rows = batch_tsv_file.splitCsv(header: true, sep: '\t')
 			return rows.collect { row -> 
 				def sample_id = row.sample_name?.trim()
 				def fq1   = row.containsKey('int_illumina_sra_file_path_1') ? trimFile(row.int_illumina_sra_file_path_1) : null
@@ -80,7 +80,6 @@ workflow BIOSAMPLE_AND_SRA {
 
 				def sample_meta = [
 					batch_id  : meta.batch_id,
-					batch_tsv: meta.batch_tsv,
 					sample_id: sample_id
 				]
 				return [sample_meta, fq1, fq2, nnp]
@@ -123,15 +122,19 @@ workflow BIOSAMPLE_AND_SRA {
 				}
 
 				def meta = [
-					batch_id : batch_id,
-					batch_tsv: sample_maps[0].meta.batch_tsv
+					batch_id : batch_id
 				]
 
 				return tuple(meta, sample_maps, enabledDatabases as List)
 			}
+			// Join with metadata_batch_ch to get the batch_tsv file
+			.join(metadata_batch_ch.map { meta, batch_tsv -> [meta.batch_id, batch_tsv] })
+			.map { meta, sample_maps, enabledDatabases, batch_tsv ->
+				tuple(meta, sample_maps, enabledDatabases, batch_tsv)
+			}
 
 		SUBMISSION(
-			submission_batch_ch, // meta: [sample_id, batch_id, batch_tsv], samples: [ [meta, fq1, fq2, nnp], ... ]), enabledDatabases (list)
+			submission_batch_ch, // meta: [batch_id], samples: [ [meta, fq1, fq2, nnp], ... ]), enabledDatabases (list), batch_tsv (file)
 			params.submission_config
 		)
 	}

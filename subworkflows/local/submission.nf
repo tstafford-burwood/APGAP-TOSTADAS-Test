@@ -11,13 +11,21 @@ include { SUBMIT_SUBMISSION     } from '../../modules/local/submit_submission/ma
 
 workflow SUBMISSION {
     take:
-        submission_ch         // (meta: [batch_id: ..., batch_tsv: ...], samples: [ [meta, fasta, fq1, fq2, nnp, gff], ... ]), enabledDatabases (list)
+        submission_ch         // (meta: [batch_id], samples: [ [meta, fq1, fq2, nnp], ... ]), enabledDatabases (list), batch_tsv (file)
         submission_config
 
     main:
         submission_config_file = file(submission_config)
 
-        PREP_SUBMISSION(submission_ch, submission_config_file)
+        // Split submission_ch into separate channels for PREP_SUBMISSION inputs
+        prep_tuple_ch = submission_ch.map { meta, samples, enabledDatabases, batch_tsv -> 
+            tuple(meta, samples, enabledDatabases)
+        }
+        prep_batch_tsv_ch = submission_ch.map { meta, samples, enabledDatabases, batch_tsv -> 
+            batch_tsv
+        }
+
+        PREP_SUBMISSION(prep_tuple_ch, prep_batch_tsv_ch, submission_config_file)
 
         PREP_SUBMISSION.out.submission_files
             .set { submission_batch_folder }
