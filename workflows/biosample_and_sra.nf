@@ -58,7 +58,14 @@ workflow BIOSAMPLE_AND_SRA {
 				batch_id: batch_tsv.getBaseName(),
 				batch_tsv: batch_tsv
 			]
+			log.info "Created metadata_batch_ch entry: batch_id=${meta.batch_id}, file=${batch_tsv}"
 			[meta, batch_tsv]
+		}
+		
+	// Log metadata_batch_ch contents
+	metadata_batch_ch
+		.ifEmpty {
+			log.error "ERROR: metadata_batch_ch is empty. No TSV files were created by METADATA_VALIDATION."
 		}
 
 	// Aggregate the tsvs for concatenation
@@ -73,29 +80,45 @@ workflow BIOSAMPLE_AND_SRA {
 		sample_ch = metadata_batch_ch.flatMap { meta, batch_tsv_file -> 
 			def rows = batch_tsv_file.splitCsv(header: true, sep: '\t')
 			if (rows.isEmpty()) {
-				log.warn "WARNING: Batch ${meta.batch_id} TSV file is empty or has no data rows"
+				log.error "ERROR: Batch ${meta.batch_id} TSV file is empty or has no data rows. File: ${batch_tsv_file}"
+				return []
 			}
-			return rows.collect { row -> 
-				def sample_id = row.sample_name?.trim()
-				if (!sample_id) {
-					log.warn "WARNING: Found row with empty sample_name in batch ${meta.batch_id}"
+			log.info "Processing batch ${meta.batch_id}: Found ${rows.size()} rows in TSV file"
+			return rows
+				.findAll { row -> 
+					def sample_id = row.sample_name?.trim()
+					if (!sample_id) {
+						log.warn "WARNING: Skipping row with empty sample_name in batch ${meta.batch_id}"
+						return false
+					}
+					return true
 				}
-				def fq1   = row.containsKey('int_illumina_sra_file_path_1') ? trimFile(row.int_illumina_sra_file_path_1) : null
-				def fq2   = row.containsKey('int_illumina_sra_file_path_2') ? trimFile(row.int_illumina_sra_file_path_2) : null
-				def nnp   = row.containsKey('int_nanopore_sra_file_path_1') ? trimFile(row.int_nanopore_sra_file_path_1) : null
+				.collect { row -> 
+					def sample_id = row.sample_name?.trim()
+					def fq1   = row.containsKey('int_illumina_sra_file_path_1') ? trimFile(row.int_illumina_sra_file_path_1) : null
+					def fq2   = row.containsKey('int_illumina_sra_file_path_2') ? trimFile(row.int_illumina_sra_file_path_2) : null
+					def nnp   = row.containsKey('int_nanopore_sra_file_path_1') ? trimFile(row.int_nanopore_sra_file_path_1) : null
 
-				def sample_meta = [
-					batch_id  : meta.batch_id,
-					sample_id: sample_id
-				]
-				return [sample_meta, fq1, fq2, nnp]
-			}
+					def sample_meta = [
+						batch_id  : meta.batch_id,
+						sample_id: sample_id
+					]
+					return [sample_meta, fq1, fq2, nnp]
+				}
 		}
 		
-		// Log if sample_ch is empty
+		// Log if sample_ch is empty and provide diagnostics
 		sample_ch
 			.ifEmpty {
-				log.warn "WARNING: sample_ch is empty. No samples found in metadata TSV files. Check that metadata files contain sample_name column with data."
+				log.error "ERROR: sample_ch is empty. No samples found in metadata TSV files."
+				log.error "This means either:"
+				log.error "  1. The TSV files created by METADATA_VALIDATION are empty"
+				log.error "  2. The TSV files don't have a 'sample_name' column"
+				log.error "  3. All 'sample_name' values in the TSV files are empty/null"
+				log.error "Check the batched_tsvs/*.tsv files in the validation output directory."
+			}
+			.view { meta, fq1, fq2, nnp -> 
+				"Sample found: ${meta.sample_id} in batch ${meta.batch_id}"
 			}
 
 		// Check for valid submission inputs and make batch channel
@@ -140,12 +163,17 @@ workflow BIOSAMPLE_AND_SRA {
 
 				return tuple(meta, sample_maps, enabledDatabases as List)
 			}
+			// Log before join to see what we have
+			.view { meta, sample_maps, enabledDatabases ->
+				"Before join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
+			}
 			// Join with metadata_batch_ch to get the batch_tsv file
 			.join(metadata_batch_ch.map { meta, batch_tsv -> 
+				log.info "Join key: batch_id=${meta.batch_id}, batch_tsv=${batch_tsv}"
 				[meta.batch_id, batch_tsv] 
 			})
 			.map { meta, sample_maps, enabledDatabases, batch_tsv ->
-				log.info "Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}"
+				log.info "After join - Batch ${meta.batch_id}: ${sample_maps.size()} samples, enabledDatabases: ${enabledDatabases}, batch_tsv=${batch_tsv}"
 				// Log warning if enabledDatabases is empty
 				if (enabledDatabases.isEmpty()) {
 					log.warn "WARNING: No databases enabled for batch ${meta.batch_id}. Submission will be skipped. Check that params.biosample or params.sra are set, and that sample files exist."
