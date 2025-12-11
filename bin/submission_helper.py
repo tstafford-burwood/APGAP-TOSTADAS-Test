@@ -26,14 +26,13 @@ from email.mime.application import MIMEApplication
 
 def setup_logging(log_file="submission.log", level=logging.INFO):
 	if not logging.getLogger().handlers:
-		handlers = [logging.StreamHandler()]
-		# Only add FileHandler if log_file is provided (not None)
-		if log_file is not None:
-			handlers.append(logging.FileHandler(log_file, mode="a"))
 		logging.basicConfig(
 			level=level,
 			format="[%(levelname)s] %(message)s",
-			handlers=handlers
+			handlers=[
+				logging.FileHandler(log_file, mode="a"),
+				logging.StreamHandler()
+			]
 		)
 
 def symlink_or_copy(src, dst, copy=False):
@@ -102,9 +101,9 @@ def sendemail(sample_id, config_dict, mode, submission_dir, dry_run=True):
 		s.quit()
 		logging.info(f"Email sent for {sample_id}")
 	except Exception as e:
-		logging.debug("Error: Unable to send mail automatically. If unable to email, submission can be made manually using the sqn file.", file=sys.stderr)
-		logging.debug("sqn_file:" + os.path.join(submission_dir, f"{sample_id}.sqn"), file=sys.stderr)
-		logging.debug(e, file=sys.stderr)
+		print("Error: Unable to send mail automatically. If unable to email, submission can be made manually using the sqn file.", file=sys.stderr)
+		print("sqn_file:" + os.path.join(submission_dir, f"{sample_id}.sqn"), file=sys.stderr)
+		print(str(e), file=sys.stderr)
 
 def get_remote_submission_dir(identifier, batch_id, db, platform=None):
 	"""Return the remote directory path under submit/<Test|Production>/..."""
@@ -368,18 +367,18 @@ class SubmissionConfigParser:
 			config_dict = yaml.load(f, Loader=yaml.BaseLoader) # Load yaml as str only
 		# Exit if yaml import and dict conversion not successful
 		if not isinstance(config_dict, dict):
-			logging.info("Error: Config file is incorrect. File must have a valid yaml format.", file=sys.stderr)
+			print("Error: Config file is incorrect. File must have a valid yaml format.", file=sys.stderr)
 			sys.exit(1)
 		# Only check credentials if not in dry_run mode
 		if not self.parameters.get('dry_run', False):
 			for k, v in config_dict.items():
 				if self.parameters.get("gisaid", False):
 					if k.startswith('GISAID') and not v:
-						logging.info("Error: There are missing GISAID values in the config file.", file=sys.stderr)
+						print("Error: There are missing GISAID values in the config file.", file=sys.stderr)
 						sys.exit(1)
 				else:
 					if k.startswith('NCBI') and not v:
-						logging.info("Error: There are missing NCBI values in the config file.", file=sys.stderr)
+						print("Error: There are missing NCBI values in the config file.", file=sys.stderr)
 						sys.exit(1)
 		return config_dict
 
