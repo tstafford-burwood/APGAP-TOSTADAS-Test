@@ -47,11 +47,29 @@ def main_prepare():
 	log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
 	_log_file_path = log_file_path  # Store for exception handler
 	
+	# Debug: Print current working directory and expected log path
+	import sys
+	cwd = os.getcwd()
+	sys.stderr.write(f'[DEBUG] Current working directory: {cwd}\n')
+	sys.stderr.write(f'[DEBUG] Expected log file path: {log_file_path}\n')
+	sys.stderr.write(f'[DEBUG] Absolute log file path: {os.path.abspath(log_file_path)}\n')
+	sys.stderr.flush()
+	
 	# Create and write to log file directly to ensure it exists
 	with open(log_file_path, 'w') as f:
 		f.write('[INFO] Log file initialized\n')
+		f.write(f'[DEBUG] Created at: {os.path.abspath(log_file_path)}\n')
+		f.write(f'[DEBUG] CWD: {cwd}\n')
 		f.flush()
 		os.fsync(f.fileno())  # Force write to disk
+	
+	# Verify file was created
+	if os.path.exists(log_file_path):
+		sys.stderr.write(f'[DEBUG] Log file exists after creation: {os.path.abspath(log_file_path)}\n')
+		sys.stderr.flush()
+	else:
+		sys.stderr.write(f'[DEBUG] ERROR: Log file does NOT exist after creation!\n')
+		sys.stderr.flush()
 	
 	setup_logging(log_file=log_file_path, level=logging.DEBUG)
 	logging.info("Started logging for preparation.")
@@ -197,25 +215,134 @@ def main_prepare():
 					os.fsync(f2.fileno())
 	except Exception as e:
 		# If we can't read it, recreate it
-		with open(log_file_path, 'w') as f:
-			f.write(f'[INFO] Log file recreated (read error: {str(e)})\n')
-			f.write('[INFO] Script completed successfully\n')
-			f.flush()
-			os.fsync(f.fileno())
+		try:
+			with open(log_file_path, 'w') as f:
+				f.write(f'[INFO] Log file recreated (read error: {str(e)})\n')
+				f.write('[INFO] Script completed successfully\n')
+				f.flush()
+				os.fsync(f.fileno())
+		except Exception as e2:
+			# If we still can't write, try absolute path
+			abs_path = os.path.abspath(log_file_path)
+			try:
+				with open(abs_path, 'w') as f:
+					f.write(f'[INFO] Log file created at absolute path\n')
+					f.write('[INFO] Script completed successfully\n')
+					f.flush()
+					os.fsync(f.fileno())
+			except:
+				pass  # Last resort failed
+	
+	# ABSOLUTE FINAL CHECK: Ensure file exists before returning
+	# This is the last thing we do - create it if it doesn't exist
+	if not os.path.exists(log_file_path):
+		sys.stderr.write(f'[DEBUG] WARNING: Log file missing before final check: {log_file_path}\n')
+		sys.stderr.write(f'[DEBUG] Absolute path: {os.path.abspath(log_file_path)}\n')
+		sys.stderr.write(f'[DEBUG] CWD: {os.getcwd()}\n')
+		sys.stderr.write(f'[DEBUG] Directory exists: {os.path.exists(os.path.dirname(log_file_path))}\n')
+		sys.stderr.flush()
+		try:
+			# Try to create directory if it doesn't exist
+			os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+			with open(log_file_path, 'w') as f:
+				f.write('[INFO] Log file created in final check\n')
+				f.write('[INFO] Script completed successfully\n')
+				f.flush()
+				os.fsync(f.fileno())
+			sys.stderr.write(f'[DEBUG] Successfully created log file in final check\n')
+			sys.stderr.flush()
+		except Exception as final_error:
+			sys.stderr.write(f'[DEBUG] Error creating log file: {str(final_error)}\n')
+			sys.stderr.flush()
+			# Even this failed - try absolute path
+			try:
+				abs_log = os.path.abspath(log_file_path)
+				os.makedirs(os.path.dirname(abs_log), exist_ok=True)
+				with open(abs_log, 'w') as f:
+					f.write('[INFO] Log file created at absolute path in final check\n')
+					f.write('[INFO] Script completed successfully\n')
+					f.flush()
+					os.fsync(f.fileno())
+				sys.stderr.write(f'[DEBUG] Successfully created log file at absolute path\n')
+				sys.stderr.flush()
+			except Exception as abs_error:
+				sys.stderr.write(f'[DEBUG] Error creating log file at absolute path: {str(abs_error)}\n')
+				sys.stderr.flush()
+	else:
+		sys.stderr.write(f'[DEBUG] Log file exists at end: {os.path.abspath(log_file_path)}\n')
+		sys.stderr.flush()
 
 if __name__=="__main__":
+	import atexit
+	import sys
+	
+	# Register an exit handler that will ALWAYS run, even on exceptions
+	def ensure_log_file_exists():
+		"""This function will run when the script exits, ensuring the log file exists"""
+		if _log_file_path:
+			import os
+			if not os.path.exists(_log_file_path):
+				try:
+					os.makedirs(os.path.dirname(_log_file_path), exist_ok=True)
+					with open(_log_file_path, 'w') as f:
+						f.write('[INFO] Log file created by exit handler\n')
+						f.write('[INFO] Script completed\n')
+						f.flush()
+						os.fsync(f.fileno())
+				except:
+					try:
+						abs_path = os.path.abspath(_log_file_path)
+						os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+						with open(abs_path, 'w') as f:
+							f.write('[INFO] Log file created at absolute path by exit handler\n')
+							f.write('[INFO] Script completed\n')
+							f.flush()
+							os.fsync(f.fileno())
+					except:
+						pass
+	
+	# Register the exit handler
+	atexit.register(ensure_log_file_exists)
+	
 	try:
 		main_prepare()
 		# Final flush of all handlers
 		for handler in logging.getLogger().handlers:
 			if isinstance(handler, logging.FileHandler):
 				handler.flush()
-		# Final write to ensure file exists
-		if _log_file_path and os.path.exists(_log_file_path):
-			with open(_log_file_path, 'a') as f:
-				f.write('[INFO] Script exiting normally\n')
-				f.flush()
-				os.fsync(f.fileno())
+		
+		# ABSOLUTE FINAL CHECK: Ensure file exists before script exits
+		if _log_file_path:
+			if not os.path.exists(_log_file_path):
+				# File doesn't exist - create it now
+				try:
+					os.makedirs(os.path.dirname(_log_file_path), exist_ok=True)
+					with open(_log_file_path, 'w') as f:
+						f.write('[INFO] Log file created at script exit\n')
+						f.write('[INFO] Script completed successfully\n')
+						f.flush()
+						os.fsync(f.fileno())
+				except Exception as e:
+					# Try absolute path
+					try:
+						abs_path = os.path.abspath(_log_file_path)
+						os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+						with open(abs_path, 'w') as f:
+							f.write('[INFO] Log file created at absolute path at script exit\n')
+							f.write('[INFO] Script completed successfully\n')
+							f.flush()
+							os.fsync(f.fileno())
+					except:
+						pass
+			else:
+				# File exists - write final message and ensure it's synced
+				try:
+					with open(_log_file_path, 'a') as f:
+						f.write('[INFO] Script exiting normally\n')
+						f.flush()
+						os.fsync(f.fileno())
+				except:
+					pass
 	except Exception as e:
 		# Log error if logging is already set up
 		if logging.getLogger().handlers:
