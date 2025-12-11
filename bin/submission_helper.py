@@ -368,7 +368,7 @@ class SubmissionConfigParser:
 			config_dict = yaml.load(f, Loader=yaml.BaseLoader) # Load yaml as str only
 		# Exit if yaml import and dict conversion not successful
 		if not isinstance(config_dict, dict):
-			logging.info("Error: Config file is incorrect. File must have a valid yaml format.", file=sys.stderr)
+			logging.error("Error: Config file is incorrect. File must have a valid yaml format.")
 			sys.exit(1)
 		
 		# Override credentials from environment variables if they exist (for Seqera secrets)
@@ -389,11 +389,17 @@ class SubmissionConfigParser:
 			for k, v in config_dict.items():
 				if self.parameters.get("gisaid", False):
 					if k.startswith('GISAID') and not v:
-						logging.info("Error: There are missing GISAID values in the config file.", file=sys.stderr)
+						logging.error("Error: There are missing GISAID values in the config file.")
 						sys.exit(1)
 				else:
+					# Check NCBI credentials - skip if they were set from environment variables
 					if k.startswith('NCBI') and not v:
-						logging.info("Error: There are missing NCBI values in the config file.", file=sys.stderr)
+						# If it's username or password, check if they were set from environment
+						if k == 'NCBI_username' and ncbi_username:
+							continue  # Skip - was set from environment
+						elif k == 'NCBI_password' and ncbi_password:
+							continue  # Skip - was set from environment
+						logging.error("Error: There are missing NCBI values in the config file.")
 						sys.exit(1)
 		return config_dict
 
