@@ -14,9 +14,6 @@ from submission_helper import (
 	setup_logging
 )
 
-# Module-level variable to store log file path for exception handling
-_log_file_path = None
-
 def prepare_sra_fastqs(samples, outdir, copy=False):
 	for sample in samples:
 		if sample.fastq1 and sample.fastq2:
@@ -36,20 +33,13 @@ def prepare_sra_fastqs(samples, outdir, copy=False):
 					os.symlink(sample.fastq2, dest_fq2)
 
 def main_prepare():
-	global _log_file_path
 	# parse exactly the same CLI args you already have
 	params = GetParams().parameters
 
 	os.makedirs(params['outdir'], exist_ok=True)
 
-	# DISABLED: File logging to avoid Nextflow path resolution issues in cloud environments
-	# The log file is optional in Nextflow and not used downstream, so we'll only log to stderr
-	# log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
-	_log_file_path = None  # No file logging
-	
-	# Setup logging to stderr only (no file logging)
-	# This avoids path resolution issues in cloud environments where work dir != execution dir
-	setup_logging(log_file=None, level=logging.DEBUG)  # Pass None to skip file handler
+	log_file_path = os.path.join(params['outdir'], 'prep_submission.log')
+	setup_logging(log_file=log_file_path, level=logging.DEBUG)
 	logging.info("Started logging for preparation.")
 	
 	# load config & metadata
@@ -153,15 +143,6 @@ def main_prepare():
 				identifier=identifier
 			)
 			gb.genbank_submission_driver()
-	
-	# Logging to stderr only (no file logging to avoid Nextflow path issues)
-	logging.info("Script completed successfully.")
 
 if __name__=="__main__":
-	try:
-		main_prepare()
-	except Exception as e:
-		# Log error if logging is already set up
-		if logging.getLogger().handlers:
-			logging.error(f"Fatal error in submission_prep.py: {str(e)}", exc_info=True)
-		raise
+	main_prepare()

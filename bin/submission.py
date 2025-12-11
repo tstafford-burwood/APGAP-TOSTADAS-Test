@@ -43,12 +43,15 @@ def main_submit():
 	args = get_args().parse_args()
 	params = vars(args)
 	
+	# Ensure log file is created early, even if script fails
+	log_file_path = f'{params["submission_folder"]}/submission.log'
 	# Ensure the submission folder exists
 	os.makedirs(params["submission_folder"], exist_ok=True)
+	# Create empty log file if it doesn't exist
+	if not os.path.exists(log_file_path):
+		open(log_file_path, 'a').close()
 	
-	# DISABLED: File logging to avoid Nextflow path resolution issues in cloud environments
-	# The log file is optional in Nextflow and not used downstream, so we'll only log to stderr
-	setup_logging(log_file=None, level=logging.DEBUG)  # Pass None to skip file handler
+	setup_logging(log_file=log_file_path, level=logging.DEBUG)
 
 	# load parameters and credentials
 	config = SubmissionConfigParser(params).load_config()
