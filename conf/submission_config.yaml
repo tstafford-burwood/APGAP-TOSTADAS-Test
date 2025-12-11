@@ -1,6 +1,11 @@
 ---
-NCBI_username: 'tstafford@burwood.com'
-NCBI_password: 'Slamdiego25!'
+# NCBI credentials should be set via Seqera workspace secrets as environment variables:
+# - NCBI_USERNAME
+# - NCBI_PASSWORD
+# If not set, these will be read from this file (for backward compatibility)
+# For production use, remove credentials from this file and use Seqera secrets
+NCBI_username: ''  # Set via NCBI_USERNAME environment variable or Seqera secret
+NCBI_password: ''  # Set via NCBI_PASSWORD environment variable or Seqera secret
 NCBI_ftp_host: 'ftp-private.ncbi.nlm.nih.gov'
 NCBI_sftp_host: 'sftp-private.ncbi.nlm.nih.gov'
 NCBI_API_URL: 'https://submit.ncbi.nlm.nih.gov/api/2.0/files/FILE_ID/?format=attachment'

@@ -370,6 +370,20 @@ class SubmissionConfigParser:
 		if not isinstance(config_dict, dict):
 			logging.info("Error: Config file is incorrect. File must have a valid yaml format.", file=sys.stderr)
 			sys.exit(1)
+		
+		# Override credentials from environment variables if they exist (for Seqera secrets)
+		# This allows using Seqera workspace secrets while keeping backward compatibility
+		# Check both uppercase (standard) and lowercase (for flexibility)
+		ncbi_username = os.environ.get('NCBI_USERNAME') or os.environ.get('NCBI_username')
+		ncbi_password = os.environ.get('NCBI_PASSWORD') or os.environ.get('NCBI_password')
+		
+		if ncbi_username:
+			config_dict['NCBI_username'] = ncbi_username
+			logging.info("Using NCBI_username from environment variable")
+		if ncbi_password:
+			config_dict['NCBI_password'] = ncbi_password
+			logging.info("Using NCBI_password from environment variable")
+		
 		# Only check credentials if not in dry_run mode
 		if not self.parameters.get('dry_run', False):
 			for k, v in config_dict.items():
