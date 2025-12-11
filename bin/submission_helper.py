@@ -26,13 +26,14 @@ from email.mime.application import MIMEApplication
 
 def setup_logging(log_file="submission.log", level=logging.INFO):
 	if not logging.getLogger().handlers:
+		handlers = [logging.StreamHandler()]
+		# Only add FileHandler if log_file is provided (not None)
+		if log_file is not None:
+			handlers.append(logging.FileHandler(log_file, mode="a"))
 		logging.basicConfig(
 			level=level,
 			format="[%(levelname)s] %(message)s",
-			handlers=[
-				logging.FileHandler(log_file, mode="a"),
-				logging.StreamHandler()
-			]
+			handlers=handlers
 		)
 
 def symlink_or_copy(src, dst, copy=False):
