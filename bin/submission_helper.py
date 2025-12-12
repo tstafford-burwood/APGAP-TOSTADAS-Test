@@ -386,20 +386,23 @@ class SubmissionConfigParser:
 		
 		# Only check credentials if not in dry_run mode
 		if not self.parameters.get('dry_run', False):
+			# Required NCBI fields (excluding optional ones like NCBI_Namespace)
+			required_ncbi_fields = ['NCBI_username', 'NCBI_password', 'NCBI_ftp_host', 'NCBI_sftp_host', 'NCBI_API_URL']
+			
 			for k, v in config_dict.items():
 				if self.parameters.get("gisaid", False):
 					if k.startswith('GISAID') and not v:
 						logging.error("Error: There are missing GISAID values in the config file.")
 						sys.exit(1)
 				else:
-					# Check NCBI credentials - skip if they were set from environment variables
-					if k.startswith('NCBI') and not v:
+					# Check only required NCBI fields
+					if k in required_ncbi_fields and not v:
 						# If it's username or password, check if they were set from environment
 						if k == 'NCBI_username' and ncbi_username:
 							continue  # Skip - was set from environment
 						elif k == 'NCBI_password' and ncbi_password:
 							continue  # Skip - was set from environment
-						logging.error("Error: There are missing NCBI values in the config file.")
+						logging.error(f"Error: Missing required NCBI field '{k}' in the config file.")
 						sys.exit(1)
 		return config_dict
 
